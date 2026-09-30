@@ -1,0 +1,57 @@
+======================================================================
+PROJECT REPORT: TOUCHLESS AUTOMATIC GATE & LIVE TELEMETRY SYSTEM
+======================================================================
+
+1. OVERVIEW
+----------------------------------------------------------------------
+This embedded systems project uses an Arduino Uno R3, an active-low 
+infrared (IR) proximity sensor, and an SG90 servo motor to create an 
+automated barrier/lid mechanism with real-time serial telemetry.
+
+2. HARDWARE COMPONENTS
+----------------------------------------------------------------------
+- 1x Arduino Uno R3 microcontroller board
+- 1x SG90 9g Micro Servo Motor
+- 1x 3-Pin IR Obstacle Avoidance Proximity Sensor Module
+- Breadboard & Jumper Wires (Male-to-Male, Male-to-Female)
+- USB Type-A to Type-B Cable
+
+3. WIRING PINOUT
+----------------------------------------------------------------------
+[IR Sensor]
+  - VCC   --> Arduino 5V
+  - GND   --> Arduino GND
+  - OUT   --> Arduino Digital Pin 2
+
+[Servo Motor (SG90)]
+  - Red (Power)    --> Arduino 5V
+  - Brown (Ground) --> Arduino GND
+  - Orange (PWM)   --> Arduino Digital Pin 9
+
+4. SYSTEM LOGIC & TIMING
+----------------------------------------------------------------------
+- Default State: Servo at 0 degrees (Gate Closed).
+- Trigger State: IR sensor pulls Pin 2 LOW on obstacle detection.
+- Actuation:
+    * Servo rotates to 90 degrees (Gate Open).
+    * Hold open delay: 1000 ms.
+    * Servo rotates back to 0 degrees (Gate Closed).
+    * Post-close stabilization delay: 150 ms.
+
+5. SERIAL TELEMETRY (9600 BAUD)
+----------------------------------------------------------------------
+Data packets are transmitted via USB Serial in JSON format:
+{"status":"OPENING","obstacle":"DETECTED","angle":90,"count":1}
+
+Status values:
+  - "status"   : IDLE, OPENING, CLOSING
+  - "obstacle" : CLEAR, DETECTED
+  - "angle"    : 0 to 90 (degrees)
+  - "count"    : Cumulative trigger occurrences
+
+6. SOFTWARE ENVIRONMENT
+----------------------------------------------------------------------
+- Platform: PlatformIO (VS Code Extension)
+- Framework: Arduino (C++)
+- Monitor Speed: 9600 baud
+======================================================================
