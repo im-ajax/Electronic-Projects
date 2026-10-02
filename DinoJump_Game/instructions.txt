@@ -1,0 +1,115 @@
+================================================================================
+GESTURE-CONTROLLED DINO JUMP GAME - SETUP & WIRING GUIDE
+
+Target Hardware: Arduino Uno R3, 0.96" I2C OLED (SSD1306), 3-Pin IR Obstacle Sensor
+IDE / Toolchain: VS Code with PlatformIO
+
+BILL OF MATERIALS
+
+1x Arduino Uno R3 (or compatible ATmega328P board)
+
+1x 0.96-inch Monochrome I2C OLED Display (128x64 resolution, SSD1306/SH1106)
+
+1x 3-Pin Active IR Obstacle Avoidance Sensor Module
+
+1x Breadboard (half-size or standard)
+
+Jumper wires (Male-to-Male and Male-to-Female)
+
+1x USB Type-A to Type-B programming cable
+
+WIRING CONNECTIONS
+
+Both modules share the Uno's 5V and GND rails via the breadboard.
+
+A. Arduino to Breadboard Power Rails:
+
+Arduino 5V   --------> Breadboard Red Power Rail (+)
+
+Arduino GND  --------> Breadboard Blue Ground Rail (-)
+
+B. 0.96" I2C OLED Display Connections:
+
+OLED VCC     --------> Breadboard Red Power Rail (+) [3.3V-5V compatible]
+
+OLED GND     --------> Breadboard Blue Ground Rail (-)
+
+OLED SCL     --------> Arduino Pin A5 (Hardware I2C Clock)
+
+OLED SDA     --------> Arduino Pin A4 (Hardware I2C Data)
+
+*IMPORTANT NOTE ON OLED PINOUT:
+Double check the silkscreen text printed on your OLED PCB.
+Some boards are ordered: [GND, VCC, SCL, SDA]
+Other boards are ordered: [VCC, GND, SCL, SDA]
+Reversing VCC and GND can permanently damage the driver IC.
+
+C. 3-Pin IR Obstacle Sensor Connections:
+
+Sensor VCC   --------> Breadboard Red Power Rail (+)
+
+Sensor GND   --------> Breadboard Blue Ground Rail (-)
+
+Sensor OUT   --------> Arduino Digital Pin D2 (Jump input trigger)
+
+SENSOR CALIBRATION (STEP-BY-STEP)
+
+Connect the Arduino Uno to your PC via USB to power the rails.
+
+The IR sensor module contains two onboard LEDs:
+
+LED 1 (Power Indicator): Stays permanently ON when powered.
+
+LED 2 (Detection Indicator): Turns ON only when reflection is sensed.
+
+Use a small screwdriver on the onboard blue potentiometer trimmer:
+
+Adjust the trimmer until LED 2 stays completely OFF with no hand present.
+
+Hover your hand 4 to 8 cm directly in front of the IR diodes.
+
+Adjust until LED 2 turns reliably ON when your hand passes and turns
+completely OFF the instant your hand leaves.
+
+PLATFORMIO CONFIGURATION (platformio.ini)
+
+Add the following configuration into your project's platformio.ini file:
+
+[env:uno]
+platform = atmelavr
+board = uno
+framework = arduino
+monitor_speed = 115200
+lib_deps =
+adafruit/Adafruit SSD1306@^2.5.9
+adafruit/Adafruit GFX Library@^1.11.9
+
+HARDWARE & TIMING OPTIMIZATIONS
+
+Bus Frequency:
+By default, Wire.h uses 100 kHz. For maximum responsiveness and high refresh
+rate rendering, initialize the I2C bus with:
+Wire.begin();
+Wire.setClock(400000L); // 400 kHz Fast Mode (Safe & Stable)
+// or Wire.setClock(800000L); // 800 kHz Fast Mode+ (Requires short wires)
+
+Wire Length:
+Keep I2C jumper wires shorter than 10-15 cm to prevent signal degradation
+and parasitic capacitance from locking up the bus.
+
+TROUBLESHOOTING CHECKLIST
+
+[ ] Display remains dark / blank:
+- Run an I2C Scanner sketch to detect address (usually 0x3C, rarely 0x3D).
+- Verify SDA is in Pin A4 and SCL is in Pin A5.
+- If display controller is SH1106 instead of SSD1306, switch library to U8g2.
+
+[ ] Character does not jump:
+- Verify sensor OUT pin is firmly seated in Digital Pin 2.
+- Check if sensor LED 2 lights up on hand gestures.
+- If sensor logic is active HIGH instead of active LOW, adjust code from:
+digitalRead(IR_PIN) == LOW to digitalRead(IR_PIN) == HIGH.
+
+[ ] Game resets immediately after death:
+- Sensor sensitivity is too high or hand lingered during crash.
+- Ensure release-to-arm logic is active in the sketch.
