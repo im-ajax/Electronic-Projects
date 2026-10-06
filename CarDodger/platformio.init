@@ -1,0 +1,12 @@
+[env:uno]
+platform = atmelavr @ ~5.0.0
+board = uno
+framework = arduino
+monitor_speed = 115200
+
+lib_deps =
+    adafruit/Adafruit SSD1306@^2.5.9
+    adafruit/Adafruit GFX Library@^1.11.9
+    adafruit/Adafruit BusIO@^1.15.0
+    Wire
+    SPI

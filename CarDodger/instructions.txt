@@ -1,0 +1,105 @@
+================================================================================
+          PROJECT BUILD MANUAL: DUAL-IR GESTURE CONTROLLED CAR DODGER
+================================================================================
+
+1. HARDWARE REQUIREMENTS & PIN CONFIGURATION
+--------------------------------------------------------------------------------
+COMPONENTS:
+- 1x Microcontroller (Arduino Uno, Nano, or ESP32)
+- 2x Active-Low Infrared Obstacle Sensors (TCRT5000 / LM393 comparator based)
+- 1x Solderless Breadboard & Male-to-Male Jumper Wires
+- 1x USB Programming & Data Cable
+
+WIRING PINOUT:
+- Common Rails:
+  * MCU 5V (or 3.3V on ESP32)  -> Breadboard Positive Rail (+)
+  * MCU GND                    -> Breadboard Negative Rail (-)
+
+- Left Sensor Module (Steer Left):
+  * VCC                        -> Breadboard Positive Rail (+)
+  * GND                        -> Breadboard Negative Rail (-)
+  * OUT                        -> Arduino Pin D2 (or ESP32 GPIO 18)
+
+- Right Sensor Module (Steer Right):
+  * VCC                        -> Breadboard Positive Rail (+)
+  * GND                        -> Breadboard Negative Rail (-)
+  * OUT                        -> Arduino Pin D3 (or ESP32 GPIO 19)
+
+PHYSICAL PLACEMENT:
+Position both sensor modules side by side on your desk, spaced roughly 15 cm 
+to 20 cm apart. Angle the emitter/receiver LEDs slightly upward (10 to 15 
+degrees) so your left and right hands trigger them independently without 
+crossing optical zones.
+
+
+2. SENSOR CALIBRATION PROCEDURE
+--------------------------------------------------------------------------------
+1. Connect the microcontroller to your PC via USB to supply power.
+2. Note the two LEDs on each IR module:
+   - Power LED: Solid ON.
+   - Sensor Output LED: Lights up only when an obstacle is detected.
+3. Hover your hand 6 cm to 10 cm directly above the Left Sensor:
+   - If the output LED does not turn on: Rotate the onboard blue trimpot 
+     CLOCKWISE to increase infrared detection range.
+   - If the output LED stays stuck ON (triggered by ceiling lights or desk 
+     surfaces): Rotate the trimpot COUNTER-CLOCKWISE until it turns off.
+4. Repeat the calibration for the Right Sensor until both sensors register 
+   your hands at the exact same height and turn off immediately upon hand 
+   removal.
+
+
+3. FIRMWARE FLASHING & VERIFICATION
+--------------------------------------------------------------------------------
+1. Open the Arduino IDE or PlatformIO.
+2. Ensure the firmware uses a 115200 baud rate and includes a 20-25ms debounce 
+   filter.
+3. Configure sensor pins as INPUT_PULLUP.
+4. Confirm the code transmits single-character tokens ('L', 'R', or 'N') ONLY 
+   when the stable sensor state changes, keeping the serial buffer empty.
+5. Select your target board and COM port, then click Upload.
+6. Open the Serial Monitor set to 115200 baud:
+   - Wave your left hand: A single 'L' should appear, followed by 'N' when 
+     withdrawn.
+   - Wave your right hand: A single 'R' should appear, followed by 'N' when 
+     withdrawn.
+7. CRITICAL: Close the Serial Monitor before opening the browser game. The COM 
+   port cannot be shared by two programs simultaneously.
+
+
+4. BROWSER SETUP & GAME LAUNCH
+--------------------------------------------------------------------------------
+1. Save the frontend game application as "index.html" on your PC.
+2. Open "index.html" using a Chromium-based browser (Google Chrome, Microsoft 
+   Edge, Opera, or Brave). Note: Web Serial API is NOT supported on Firefox 
+   or Safari.
+3. Click the "Connect Arduino" button on the top HUD.
+4. From the browser prompt, select your board's serial connection (e.g., 
+   USB-SERIAL CH340, CP2102, or Arduino Uno) and click "Connect".
+5. The status badge will change from "Hardware Offline" (Red) to "Hardware 
+   Connected" (Green).
+6. Wave your hands over the sensors to steer your vehicle across lanes. If 
+   your car crashes, wave over either sensor to reboot and restart the round.
+
+
+5. TROUBLESHOOTING & COMMON MISTAKES
+--------------------------------------------------------------------------------
+ISSUE: Browser displays "Failed to open serial port".
+FIX:   Another software (Arduino IDE Serial Monitor, Cura, PuTTY) is currently 
+       holding the COM port open. Close all other serial programs and reload 
+       the webpage.
+
+ISSUE: Vehicle steers erratically without hand movement.
+FIX:   Ambient sunlight or desk bounce is triggering the IR receivers. Reduce 
+       sensitivity using the onboard trimpots and slightly elevate the sensor 
+       heads away from the desk surface.
+
+ISSUE: Input has a 1-2 second delay.
+FIX:   The microcontroller is spamming strings inside void loop() every cycle. 
+       Ensure the board transmits data strictly upon state transitions 
+       (rawState != lastStableState).
+
+ISSUE: "Connect Arduino" button does nothing.
+FIX:   You are opening the page in an unsupported browser (Firefox, Safari) or 
+       browser serial permissions are disabled in settings. Use Google Chrome 
+       or Microsoft Edge.
+================================================================================
