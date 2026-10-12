@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>AERO-LOCK // Tactical Interceptor 1080p Cockpit HUD</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #01060d;
+      color: #00f2ff;
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .hud-font {
+      font-family: 'Chakra Petch', sans-serif;
+    }
+    .scanlines {
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.3) 50%),
+                  linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+      background-size: 100% 3px, 4px 100%;
+      pointer-events: none;
+    }
+    .vignette {
+      background: radial-gradient(circle at 50% 50%, transparent 60%, rgba(1, 4, 8, 0.85) 100%);
+      pointer-events: none;
+    }
+    .glow-cyan {
+      text-shadow: 0 0 10px rgba(0, 242, 255, 0.75), 0 0 20px rgba(0, 242, 255, 0.35);
+    }
+    .glow-red {
+      text-shadow: 0 0 10px rgba(255, 46, 99, 0.85), 0 0 20px rgba(255, 46, 99, 0.45);
+    }
+    .glass-panel {
+      background: rgba(3, 15, 27, 0.72);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(0, 242, 255, 0.22);
+      box-shadow: 0 0 25px rgba(0, 242, 255, 0.08), inset 0 0 15px rgba(0, 242, 255, 0.03);
+    }
+    @keyframes pulseTarget {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.03); opacity: 0.7; }
+    }
+    .pulse-lock {
+      animation: pulseTarget 0.7s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen flex flex-col justify-between overflow-hidden">
+  <!-- Ambient Overlays -->
+  <div class="fixed inset-0 scanlines z-30"></div>
+  <div class="fixed inset-0 vignette z-30"></div>
+
+  <!-- Primary Interactive High-DPI Canvas -->
+  <canvas id="gameCanvas" class="absolute inset-0 z-0 block w-full h-full cursor-crosshair"></canvas>
+
+  <!-- Top Cockpit Header Bar -->
+  <header class="relative z-40 w-full px-6 py-3 flex items-center justify-between pointer-events-auto">
+    <!-- Left Logo & Squadron Tag -->
+    <div class="flex items-center gap-4">
+      <div class="w-3.5 h-3.5 rounded-full bg-cyan-400 shadow-[0_0_12px_#00f2ff] animate-ping"></div>
+      <div>
+        <div class="hud-font font-bold text-xl tracking-widest text-white flex items-center gap-2">
+          <span>AERO-LOCK 1080p</span>
+          <span class="text-[11px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 tracking-wider">TACTICAL HUD</span>
+        </div>
+        <p class="text-[10px] text-cyan-400/70 tracking-widest uppercase">SERIAL WEAPONS INTERLOCK SYSTEM // MK-V</p>
+      </div>
+    </div>
+
+    <!-- Center Compass Heading Tape Display -->
+    <div class="hidden md:flex flex-col items-center">
+      <div class="glass-panel px-6 py-1.5 rounded-full flex items-center gap-4 border-cyan-500/40">
+        <span class="text-[11px] text-cyan-400/70 tracking-widest">BEARING</span>
+        <span id="topCompassDeg" class="hud-font font-bold text-lg text-white glow-cyan tracking-wider">000°</span>
+        <span id="topCompassCard" class="text-xs font-bold text-amber-400 tracking-widest">N</span>
+      </div>
+    </div>
+
+    <!-- Right USB Connection, Guide, and Sound Control -->
+    <div class="flex items-center gap-3">
+      <div id="connStatusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-500/40 bg-red-950/30 text-xs">
+        <span class="w-2 h-2 rounded-full bg-red-500" id="connLed"></span>
+        <span id="connLabel" class="text-red-400 font-bold tracking-wider">USB DISCONNECTED</span>
+      </div>
+
+      <button id="btnConnectUSB" class="hud-font font-bold text-xs tracking-wider px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-all shadow-[0_0_20px_rgba(0,242,255,0.4)] active:scale-95 flex items-center gap-2">
+        <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M15 7v4h1v2h-3V5h2l-3-4-3 4h2v8H7v-2h1V7H4v4h1v4h5v4H8l3 4 3-4h-2v-4h5v-4h1V7h-4z"/></svg>
+        <span>CONNECT ESP32</span>
+      </button>
+
+      <button id="btnAudioToggle" class="glass-panel px-3 py-2 rounded-lg text-xs hud-font tracking-wide text-cyan-300 hover:text-white transition-colors">
+        AUDIO: ON
+      </button>
+
+      <button id="btnWiringGuide" class="glass-panel px-3 py-2 rounded-lg text-xs hud-font tracking-wide text-cyan-400 hover:text-white transition-colors">
+        GUIDE
+      </button>
+    </div>
+  </header>
+
+  <!-- Left Telemetry Deck -->
+  <aside class="absolute left-6 top-24 z-40 w-72 pointer-events-none flex flex-col gap-3">
+    <!-- Target Lock Card -->
+    <div id="hudLockCard" class="glass-panel rounded-xl p-4 transition-all duration-200">
+      <div class="flex justify-between items-center text-[10px] tracking-widest text-cyan-400/70 border-b border-cyan-500/20 pb-1.5 uppercase">
+        <span>WEAPON BUS STATUS</span>
+        <span id="txtRelayTag" class="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 font-bold">INTERLOCK: CUT-OFF</span>
+      </div>
+      <div class="text-center py-3">
+        <div id="txtLockBanner" class="hud-font font-bold text-2xl text-cyan-400 tracking-wider">SCANNING</div>
+        <div id="txtLockDesc" class="text-[11px] text-slate-400 mt-0.5">NO TARGET IN BORESIGHT</div>
+      </div>
+      <div class="space-y-1.5 text-xs pt-1 border-t border-cyan-500/20">
+        <div class="flex justify-between">
+          <span class="text-slate-400">RADAR SENSOR:</span>
+          <span class="text-emerald-400 font-bold">360° ACTIVE</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">TRIGGER STATUS:</span>
+          <span id="txtBusPower" class="text-rose-400 font-bold">LOCKED OUT</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Missile Inventory Deck -->
+    <div class="glass-panel rounded-xl p-4">
+      <div class="flex justify-between items-center text-[10px] tracking-widest text-cyan-400/70 border-b border-cyan-500/20 pb-1.5 uppercase">
+        <span>ORDNANCE / AIM-9X</span>
+        <span class="text-amber-400 font-bold">CAPACITY: 10</span>
+      </div>
+      <div class="flex items-baseline justify-between py-2">
+        <span id="txtAmmoCount" class="hud-font text-4xl font-extrabold text-white glow-cyan">10</span>
+        <span class="text-[11px] text-cyan-400/70 uppercase">MAGAZINE READY</span>
+      </div>
+      <!-- Ammo gauge indicators -->
+      <div id="ammoGaugeGrid" class="grid grid-cols-10 gap-1.5 h-3.5 mb-2"></div>
+      <p class="text-[10px] text-cyan-400/60 leading-tight">
+        TOUCH = Launch (Requires Lock) <br>IR SENSOR = Full Mag Replenish
+      </p>
+    </div>
+
+    <!-- Flight Telemetry Readout -->
+    <div class="glass-panel rounded-xl p-3 text-xs space-y-1.5">
+      <div class="flex justify-between">
+        <span class="text-slate-400">POT HEADING:</span>
+        <span id="rawPotDeg" class="text-cyan-300 font-bold">000°</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-slate-400">KILLS CONFIRMED:</span>
+        <span id="txtKills" class="hud-font font-bold text-cyan-300">0</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-slate-400">SCORE:</span>
+        <span id="txtScore" class="hud-font font-bold text-white text-sm glow-cyan">000000</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Signal & Fallback Controls Deck -->
+  <aside class="absolute right-6 top-24 z-40 w-72 pointer-events-none flex flex-col gap-3">
+    <!-- Real-time Hardware Signals -->
+    <div class="glass-panel rounded-xl p-4">
+      <div class="text-[10px] tracking-widest text-cyan-400/70 border-b border-cyan-500/20 pb-1.5 uppercase">
+        DIRECT SENSOR BUS READOUTS
+      </div>
+      <div class="space-y-2 text-xs pt-2">
+        <div class="flex items-center justify-between p-1.5 rounded bg-slate-950/60 border border-slate-800">
+          <span class="text-slate-300">POTENTIOMETER:</span>
+          <span id="telemetryPot" class="text-cyan-300 font-mono font-bold">0° (RAW 0)</span>
+        </div>
+        <div class="flex items-center justify-between p-1.5 rounded bg-slate-950/60 border border-slate-800">
+          <span class="text-slate-300">TOUCH SENSOR:</span>
+          <span id="telemetryTouch" class="text-slate-400 font-mono">IDLE</span>
+        </div>
+        <div class="flex items-center justify-between p-1.5 rounded bg-slate-950/60 border border-slate-800">
+          <span class="text-slate-300">IR SENSOR:</span>
+          <span id="telemetryIR" class="text-slate-400 font-mono">CLEAR</span>
+        </div>
+        <div class="flex items-center justify-between p-1.5 rounded bg-slate-950/60 border border-slate-800">
+          <span class="text-slate-300">WEAPONS INTERLOCK:</span>
+          <span id="telemetryLock" class="text-rose-400 font-bold">DISARMED (0)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keyboard Simulation Fallback Deck -->
+    <div class="glass-panel rounded-xl p-4">
+      <div class="text-[10px] tracking-widest text-cyan-400/70 border-b border-cyan-500/20 pb-1.5 uppercase">
+        MANUAL KEYBOARD OVERRIDE
+      </div>
+      <p class="text-[11px] text-slate-400 my-2">
+        Instantly test flight without physical ESP32 connected:
+      </p>
+      <div class="space-y-1.5 text-[11px]">
+        <div class="flex justify-between items-center bg-slate-950/60 p-1.5 rounded border border-slate-800">
+          <span class="text-slate-300">A / D or ← / →</span>
+          <span class="text-cyan-300 font-semibold">Rotate Jet</span>
+        </div>
+        <div class="flex justify-between items-center bg-slate-950/60 p-1.5 rounded border border-slate-800">
+          <span class="text-slate-300">SPACE / F</span>
+          <span class="text-cyan-300 font-semibold">Fire (Locked Only)</span>
+        </div>
+        <div class="flex justify-between items-center bg-slate-950/60 p-1.5 rounded border border-slate-800">
+          <span class="text-slate-300">R</span>
+          <span class="text-cyan-300 font-semibold">IR Reload</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom Status Bar -->
+  <footer class="relative z-40 w-full px-6 py-2 flex items-center justify-between text-[11px] text-cyan-400/60 glass-panel border-b-0 border-x-0 pointer-events-none">
+    <div class="flex items-center gap-3">
+      <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+      <span>1920x1080 FULLSCREEN OPTIMIZED // ZERO SCROLLBARS // WEB SERIAL V2</span>
+    </div>
+    <div class="hud-font tracking-wider text-slate-400">
+      SECTOR: PACIFIC-AIR-DEFENSE-09 // LAT: 23.8103° N // LON: 90.4125° E
+    </div>
+  </footer>
+
+  <!-- Hardware Wiring Modal -->
+  <div id="modalGuide" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-6 pointer-events-auto">
+    <div class="glass-panel max-w-2xl w-full rounded-2xl p-6 relative border-cyan-500/50">
+      <button id="btnCloseGuide" class="absolute top-4 right-4 text-cyan-400 hover:text-white p-2">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+
+      <h2 class="hud-font text-2xl font-bold text-white mb-2 flex items-center gap-2">
+        <span class="text-cyan-400">⚡</span> HARDWARE CABLING & SETUP GUIDE
+      </h2>
+      <p class="text-xs text-slate-300 mb-4">
+        Pure 3.3V safe wiring diagram for your ESP32-S3 without requiring a relay module.
+      </p>
+
+      <div class="space-y-3 text-xs">
+        <div class="p-3 rounded-lg bg-slate-900 border border-cyan-500/30">
+          <h3 class="font-bold text-cyan-300 text-sm mb-1.5">ESP32-S3 Pin Mapping (All on 3.3V Rail)</h3>
+          <ul class="space-y-1 text-slate-300 list-disc pl-4">
+            <li><strong>Potentiometer (Steering):</strong> Center pin &rarr; <span class="text-white font-mono">GPIO 1</span>. Outer pins &rarr; <span class="text-white font-mono">3.3V & GND</span>.</li>
+            <li><strong>Touch Sensor (Fire):</strong> OUT &rarr; <span class="text-white font-mono">GPIO 4</span>. VCC/GND &rarr; <span class="text-white font-mono">3.3V & GND</span>.</li>
+            <li><strong>IR Sensor (Reload):</strong> OUT &rarr; <span class="text-white font-mono">GPIO 5</span>. VCC/GND &rarr; <span class="text-white font-mono">3.3V & GND</span>.</li>
+          </ul>
+        </div>
+
+        <div class="p-3 rounded-lg bg-slate-900 border border-cyan-500/30">
+          <h3 class="font-bold text-cyan-300 text-sm mb-1">Target Lock Interlock:</h3>
+          <p class="text-slate-300">
+            Missiles are locked out until an enemy enters your boresight diamond. When locked, the radar border turns red and audio confirms tone.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    /* Procedural Web Audio Engine */
+    class ProceduralAudio {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+        this.ambientGain = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+          this.startJetHum();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      startJetHum() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(55, this.ctx.currentTime);
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(110, this.ctx.currentTime);
+
+        gain.gain.setValueAtTime(0.015, this.ctx.currentTime);
+        this.ambientGain = gain;
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+      }
+
+      playLockTone() {
+        if (!this.enabled || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(1550, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.08);
+      }
+
+      playLaunchWhoosh() {
+        if (!this.enabled || !this.ctx) return;
+        const t = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        const oscGain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(800, t);
+        osc.frequency.exponentialRampToValueAtTime(120, t + 0.32);
+
+        oscGain.gain.setValueAtTime(0.3, t);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+
+        osc.connect(oscGain);
+        oscGain.connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.33);
+
+        const len = this.ctx.sampleRate * 0.28;
+        const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buf;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(1500, t);
+        filter.frequency.exponentialRampToValueAtTime(250, t + 0.28);
+        filter.Q.value = 2.5;
+
+        const noiseGain = this.ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.45, t);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+
+        noise.connect(filter);
+        filter.connect(noiseGain);
+        noiseGain.connect(this.ctx.destination);
+
+        noise.start(t);
+        noise.stop(t + 0.28);
+      }
+
+      playExplosion() {
+        if (!this.enabled || !this.ctx) return;
+        const t = this.ctx.currentTime;
+
+        const sub = this.ctx.createOscillator();
+        const subGain = this.ctx.createGain();
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(160, t);
+        sub.frequency.exponentialRampToValueAtTime(25, t + 0.45);
+
+        subGain.gain.setValueAtTime(0.75, t);
+        subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+
+        sub.connect(subGain);
+        subGain.connect(this.ctx.destination);
+        sub.start(t);
+        sub.stop(t + 0.46);
+
+        const len = this.ctx.sampleRate * 0.45;
+        const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buf;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(700, t);
+        filter.frequency.linearRampToValueAtTime(60, t + 0.45);
+
+        const noiseGain = this.ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.7, t);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+
+        noise.connect(filter);
+        filter.connect(noiseGain);
+        noiseGain.connect(this.ctx.destination);
+
+        noise.start(t);
+        noise.stop(t + 0.45);
+      }
+
+      playReload() {
+        if (!this.enabled || !this.ctx) return;
+        const t = this.ctx.currentTime;
+
+        const triggerClick = (offset, freq, duration) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, t + offset);
+          osc.frequency.exponentialRampToValueAtTime(120, t + offset + duration);
+
+          gain.gain.setValueAtTime(0.4, t + offset);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + offset + duration);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t + offset);
+          osc.stop(t + offset + duration + 0.01);
+        };
+
+        triggerClick(0.00, 1500, 0.06);
+        triggerClick(0.12, 2100, 0.08);
+      }
+
+      // Cutoff click when firing without lock
+      playEmptyClick() {
+        if (!this.enabled || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.05);
+      }
+    }
+
+    const sound = new ProceduralAudio();
+
+    /* Web Serial Port Communications Controller */
+    class WebSerialLink {
+      constructor() {
+        this.port = null;
+        this.reader = null;
+        this.writer = null;
+        this.isConnected = false;
+        this.buffer = '';
+      }
+
+      async connect() {
+        if (!('serial' in navigator)) {
+          alert("Web Serial is supported on Google Chrome, Microsoft Edge, and Opera.\nPlease open this in Chrome or Edge.");
+          return false;
+        }
+        try {
+          this.port = await navigator.serial.requestPort();
+          await this.port.open({ baudRate: 115200 });
+          this.writer = this.port.writable.getWriter();
+          this.isConnected = true;
+          this.startReadLoop();
+          return true;
+        } catch (err) {
+          console.warn("Serial connection aborted or failed:", err);
+          return false;
+        }
+      }
+
+      async startReadLoop() {
+        const textDecoder = new TextDecoderStream();
+        this.port.readable.pipeTo(textDecoder.writable);
+        this.reader = textDecoder.readable.getReader();
+
+        try {
+          while (true) {
+            const { value, done } = await this.reader.read();
+            if (done) break;
+            if (value) {
+              this.buffer += value;
+              const lines = this.buffer.split('\n');
+              this.buffer = lines.pop();
+
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                  try {
+                    const data = JSON.parse(trimmed);
+                    dispatchSerialPacket(data);
+                  } catch (e) {}
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Serial read error:", e);
+        } finally {
+          this.isConnected = false;
+          setUSBStatus(false);
+        }
+      }
+
+      async send(obj) {
+        if (!this.isConnected || !this.writer) return;
+        try {
+          const encoder = new TextEncoder();
+          const str = JSON.stringify(obj) + '\n';
+          await this.writer.write(encoder.encode(str));
+        } catch (e) {
+          console.error("Serial write failed:", e);
+        }
+      }
+    }
+
+    const serialLink = new WebSerialLink();
+
+    /* Core Game State & Viewport Setup */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let screenWidth = window.innerWidth;
+    let screenHeight = window.innerHeight;
+    let dpr = window.devicePixelRatio || 1;
+
+    function resizeCanvas() {
+      screenWidth = window.innerWidth;
+      screenHeight = window.innerHeight;
+      dpr = window.devicePixelRatio || 1;
+
+      canvas.width = Math.floor(screenWidth * dpr);
+      canvas.height = Math.floor(screenHeight * dpr);
+      canvas.style.width = `${screenWidth}px`;
+      canvas.style.height = `${screenHeight}px`;
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Simulation variables
+    let planeAngle = 0;          // radians
+    let targetPlaneAngle = 0;    // smoothed interpolation
+    let ammo = 10;
+    let score = 0;
+    let kills = 0;
+    let targetLocked = false;
+    let lastLockSoundTime = 0;
+
+    let missiles = [];
+    let enemies = [];
+    let particles = [];
+    let shockwaves = [];
+    let radarSweep = 0;
+    let shakeIntensity = 0;
+
+    // Dual Input Conflict Resolver
+    let lastPotAngle = 0;
+    let keyboardControlActiveUntil = 0;
+    const keysDown = {};
+
+    /* DOM UI & Modal Bindings */
+    document.getElementById('btnConnectUSB').addEventListener('click', async (e) => {
+      sound.init();
+      const success = await serialLink.connect();
+      setUSBStatus(success);
+      e.target.blur();
+    });
+
+    const btnAudio = document.getElementById('btnAudioToggle');
+    btnAudio.addEventListener('click', (e) => {
+      sound.init();
+      sound.enabled = !sound.enabled;
+      btnAudio.textContent = `AUDIO: ${sound.enabled ? 'ON' : 'OFF'}`;
+      btnAudio.classList.toggle('text-slate-500', !sound.enabled);
+      btnAudio.classList.toggle('text-cyan-300', sound.enabled);
+      e.target.blur();
+    });
+
+    const modal = document.getElementById('modalGuide');
+    document.getElementById('btnWiringGuide').addEventListener('click', (e) => {
+      modal.classList.remove('hidden');
+      e.target.blur();
+    });
+    document.getElementById('btnCloseGuide').addEventListener('click', () => modal.classList.add('hidden'));
+
+    canvas.addEventListener('click', () => {
+      sound.init();
+      if (document.activeElement) document.activeElement.blur();
+    });
+
+    function setUSBStatus(connected) {
+      const badge = document.getElementById('connStatusBadge');
+      const led = document.getElementById('connLed');
+      const label = document.getElementById('connLabel');
+      const btn = document.getElementById('btnConnectUSB');
+
+      if (connected) {
+        badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-lg border border-cyan-500/50 bg-cyan-950/40 text-xs";
+        led.className = "w-2 h-2 rounded-full bg-cyan-400 animate-pulse";
+        label.className = "text-cyan-300 font-bold tracking-wider";
+        label.textContent = "USB LINKED (115200)";
+        btn.classList.add('opacity-50', 'pointer-events-none');
+        btn.querySelector('span').textContent = "ESP32 LINKED";
+      } else {
+        badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-500/40 bg-red-950/30 text-xs";
+        led.className = "w-2 h-2 rounded-full bg-red-500";
+        label.className = "text-red-400 font-bold tracking-wider";
+        label.textContent = "USB DISCONNECTED";
+        btn.classList.remove('opacity-50', 'pointer-events-none');
+        btn.querySelector('span').textContent = "CONNECT ESP32";
+      }
+    }
+
+    function dispatchSerialPacket(data) {
+      if (typeof data.angle === 'number') {
+        const potDelta = Math.abs(data.angle - lastPotAngle);
+        const isKeyboardActive = performance.now() < keyboardControlActiveUntil;
+
+        if (!isKeyboardActive || potDelta > 1.5) {
+          targetPlaneAngle = (data.angle * Math.PI) / 180;
+          lastPotAngle = data.angle;
+          document.getElementById('telemetryPot').textContent = `${data.angle.toFixed(1)}° (RAW ${Math.round(data.angle * 4095 / 360)})`;
+        }
+      }
+
+      if (data.fire === 1) {
+        document.getElementById('telemetryTouch').textContent = 'ACTIVE';
+        document.getElementById('telemetryTouch').className = "text-cyan-300 font-mono font-bold";
+        fireMissile();
+      } else if (data.fire === 0) {
+        document.getElementById('telemetryTouch').textContent = 'IDLE';
+        document.getElementById('telemetryTouch').className = "text-slate-400 font-mono";
+      }
+
+      if (data.reload === 1) {
+        document.getElementById('telemetryIR').textContent = 'DETECTED';
+        document.getElementById('telemetryIR').className = "text-emerald-400 font-mono font-bold";
+        reloadMissiles();
+      } else if (data.reload === 0) {
+        document.getElementById('telemetryIR').textContent = 'CLEAR';
+        document.getElementById('telemetryIR').className = "text-slate-400 font-mono";
+      }
+    }
+
+    // Keyboard Listeners
+    window.addEventListener('keydown', (e) => {
+      sound.init();
+      if (document.activeElement && document.activeElement.tagName === 'BUTTON') {
+        document.activeElement.blur();
+      }
+
+      const code = e.code;
+      keysDown[code] = true;
+
+      if (code === 'KeyA' || code === 'ArrowLeft' || code === 'KeyD' || code === 'ArrowRight') {
+        e.preventDefault();
+        keyboardControlActiveUntil = performance.now() + 1500;
+      }
+
+      if ((code === 'Space' || code === 'KeyF') && !e.repeat) {
+        e.preventDefault();
+        fireMissile();
+      }
+      if (code === 'KeyR' && !e.repeat) {
+        e.preventDefault();
+        reloadMissiles();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keysDown[e.code] = false;
+    });
+
+    // --- WEAPONS INTERLOCK: FIRES ONLY WHEN LOCKED ---
+    function fireMissile() {
+      // 1. Strict Interlock Check
+      if (!targetLocked) {
+        sound.playEmptyClick(); // Dry click feedback
+        return;
+      }
+
+      // 2. Ammo Check
+      if (ammo <= 0) {
+        sound.playEmptyClick();
+        return;
+      }
+
+      ammo--;
+      updateAmmoHUD();
+      sound.playLaunchWhoosh();
+      shakeIntensity = Math.max(shakeIntensity, 6);
+
+      const cx = screenWidth / 2;
+      const cy = screenHeight / 2;
+      const muzzleOffset = 36;
+      const speed = 12.0;
+
+      missiles.push({
+        x: cx + Math.cos(planeAngle) * muzzleOffset,
+        y: cy + Math.sin(planeAngle) * muzzleOffset,
+        vx: Math.cos(planeAngle) * speed,
+        vy: Math.sin(planeAngle) * speed,
+        trail: [],
+        life: 0
+      });
+    }
+
+    function reloadMissiles() {
+      if (ammo === 10) return;
+      ammo = 10;
+      updateAmmoHUD();
+      sound.playReload();
+    }
+
+    function updateAmmoHUD() {
+      document.getElementById('txtAmmoCount').textContent = ammo;
+      const grid = document.getElementById('ammoGaugeGrid');
+      grid.innerHTML = '';
+      for (let i = 0; i < 10; i++) {
+        const bar = document.createElement('div');
+        bar.className = `rounded-sm h-full transition-all duration-150 ${
+          i < ammo ? 'bg-cyan-400 shadow-[0_0_8px_#00f2ff]' : 'bg-slate-800/80 border border-slate-700/50'
+        }`;
+        grid.appendChild(bar);
+      }
+    }
+    updateAmmoHUD();
+
+    /* Enemy Aircraft Spawner */
+    function spawnTargetEnemy() {
+      if (enemies.length >= 7) return;
+      const edge = Math.floor(Math.random() * 4);
+      let ex = 0, ey = 0;
+      const pad = 40;
+
+      if (edge === 0) { ex = Math.random() * screenWidth; ey = -pad; }
+      else if (edge === 1) { ex = screenWidth + pad; ey = Math.random() * screenHeight; }
+      else if (edge === 2) { ex = Math.random() * screenWidth; ey = screenHeight + pad; }
+      else { ex = -pad; ey = Math.random() * screenHeight; }
+
+      enemies.push({
+        x: ex,
+        y: ey,
+        speed: 0.8 + Math.random() * 0.9,
+        size: 14,
+        locked: false,
+        callsign: `BOGEY-${Math.floor(10 + Math.random() * 90)}`
+      });
+    }
+    setInterval(spawnTargetEnemy, 2000);
+
+    function createExplosion(x, y) {
+      shakeIntensity = 12;
+      shockwaves.push({ x, y, radius: 10, maxRadius: 85, alpha: 1.0 });
+
+      for (let i = 0; i < 30; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 1.5 + Math.random() * 6.5;
+        particles.push({
+          x, y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          alpha: 1.0,
+          color: Math.random() > 0.4 ? '#ff2e63' : '#ffcc00',
+          radius: 2 + Math.random() * 3
+        });
+      }
+    }
+
+    /* Simulation Update Loop */
+    function updateSimulation() {
+      if (keysDown['KeyA'] || keysDown['ArrowLeft']) {
+        targetPlaneAngle -= 0.055;
+        keyboardControlActiveUntil = performance.now() + 1500;
+        lastPotAngle = (targetPlaneAngle * 180 / Math.PI + 360) % 360;
+      }
+      if (keysDown['KeyD'] || keysDown['ArrowRight']) {
+        targetPlaneAngle += 0.055;
+        keyboardControlActiveUntil = performance.now() + 1500;
+        lastPotAngle = (targetPlaneAngle * 180 / Math.PI + 360) % 360;
+      }
+
+      // Smooth heading angle interpolation
+      let angleDiff = targetPlaneAngle - planeAngle;
+      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+      planeAngle += angleDiff * 0.28;
+
+      if (planeAngle < 0) planeAngle += Math.PI * 2;
+      if (planeAngle >= Math.PI * 2) planeAngle -= Math.PI * 2;
+
+      const deg = Math.round((planeAngle * 180 / Math.PI)) % 360;
+      const degPadded = String(deg).padStart(3, '0');
+      document.getElementById('topCompassDeg').textContent = `${degPadded}°`;
+      document.getElementById('rawPotDeg').textContent = `${degPadded}°`;
+
+      const cardinals = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+      const cardIdx = Math.round(deg / 45) % 8;
+      document.getElementById('topCompassCard').textContent = cardinals[cardIdx];
+
+      const cx = screenWidth / 2;
+      const cy = screenHeight / 2;
+      const boresightLimit = 0.48;
+      const maxRadarRange = Math.min(screenWidth, screenHeight) * 0.42;
+
+      // Update Missiles
+      for (let i = missiles.length - 1; i >= 0; i--) {
+        const m = missiles[i];
+        m.x += m.vx;
+        m.y += m.vy;
+        m.life++;
+
+        m.trail.push({ x: m.x, y: m.y, alpha: 0.8 });
+        if (m.trail.length > 10) m.trail.shift();
+
+        if (m.x < -50 || m.x > screenWidth + 50 || m.y < -50 || m.y > screenHeight + 50 || m.life > 140) {
+          missiles.splice(i, 1);
+        }
+      }
+
+      // Update Shockwaves
+      for (let i = shockwaves.length - 1; i >= 0; i--) {
+        const s = shockwaves[i];
+        s.radius += 4;
+        s.alpha -= 0.04;
+        if (s.alpha <= 0) shockwaves.splice(i, 1);
+      }
+
+      // Update Target Enemies & Boresight Radar Scan
+      let candidateFound = false;
+
+      for (let ei = enemies.length - 1; ei >= 0; ei--) {
+        const e = enemies[ei];
+        const dx = cx - e.x;
+        const dy = cy - e.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > 45) {
+          e.x += (dx / dist) * e.speed;
+          e.y += (dy / dist) * e.speed;
+        }
+
+        const enemyAngle = Math.atan2(e.y - cy, e.x - cx);
+        let angDelta = Math.abs(planeAngle - enemyAngle);
+        while (angDelta > Math.PI) angDelta -= Math.PI * 2;
+        angDelta = Math.abs(angDelta);
+
+        if (angDelta <= boresightLimit && dist <= maxRadarRange) {
+          e.locked = true;
+          candidateFound = true;
+        } else {
+          e.locked = false;
+        }
+
+        // Missile to Target Collision Detection
+        for (let mi = missiles.length - 1; mi >= 0; mi--) {
+          const m = missiles[mi];
+          if (Math.hypot(m.x - e.x, m.y - e.y) < e.size + 12) {
+            createExplosion(e.x, e.y);
+            sound.playExplosion();
+            enemies.splice(ei, 1);
+            missiles.splice(mi, 1);
+            score += 250;
+            kills++;
+            document.getElementById('txtScore').textContent = String(score).padStart(6, '0');
+            document.getElementById('txtKills').textContent = kills;
+            break;
+          }
+        }
+      }
+
+      // Target Lock Transition
+      if (candidateFound !== targetLocked) {
+        targetLocked = candidateFound;
+        serialLink.send({ locked: targetLocked });
+        updateLockCard(targetLocked);
+      }
+
+      if (targetLocked && Date.now() - lastLockSoundTime > 320) {
+        lastLockSoundTime = Date.now();
+        sound.playLockTone();
+      }
+
+      // Update explosion particles
+      for (let pi = particles.length - 1; pi >= 0; pi--) {
+        const p = particles[pi];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= 0.035;
+        if (p.alpha <= 0) particles.splice(pi, 1);
+      }
+
+      // Sweep angle rotation
+      radarSweep += 0.032;
+      if (radarSweep >= Math.PI * 2) radarSweep -= Math.PI * 2;
+
+      // Screen shake decay
+      if (shakeIntensity > 0) shakeIntensity *= 0.88;
+    }
+
+    function updateLockCard(isLocked) {
+      const card = document.getElementById('hudLockCard');
+      const banner = document.getElementById('txtLockBanner');
+      const desc = document.getElementById('txtLockDesc');
+      const bus = document.getElementById('txtBusPower');
+      const relayTag = document.getElementById('txtRelayTag');
+      const telemLock = document.getElementById('telemetryLock');
+
+      if (isLocked) {
+        card.className = "glass-panel rounded-xl p-4 border-rose-500/80 bg-rose-950/35 pulse-lock";
+        banner.className = "hud-font font-bold text-2xl text-rose-400 tracking-wider glow-red";
+        banner.textContent = "TARGET LOCKED";
+        desc.textContent = "AIM-9X GUIDANCE HOT // READY TO FIRE";
+        bus.textContent = "ARMED (FIRE READY)";
+        bus.className = "text-emerald-400 font-bold";
+        relayTag.textContent = "INTERLOCK: ENGAGED";
+        relayTag.className = "px-2 py-0.5 rounded bg-emerald-950 border border-emerald-500 text-emerald-300 font-bold";
+        telemLock.textContent = "ARMED (1)";
+        telemLock.className = "text-emerald-400 font-bold";
+      } else {
+        card.className = "glass-panel rounded-xl p-4";
+        banner.className = "hud-font font-bold text-2xl text-cyan-400 tracking-wider";
+        banner.textContent = "SCANNING";
+        desc.textContent = "NO TARGET IN BORESIGHT";
+        bus.textContent = "LOCKED OUT";
+        bus.className = "text-rose-400 font-bold";
+        relayTag.textContent = "INTERLOCK: CUT-OFF";
+        relayTag.className = "px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 font-bold";
+        telemLock.textContent = "DISARMED (0)";
+        telemLock.className = "text-rose-400 font-bold";
+      }
+    }
+
+    /* Canvas Render Pipeline */
+    function renderFrame() {
+      ctx.save();
+
+      if (shakeIntensity > 0.1) {
+        const ox = (Math.random() - 0.5) * shakeIntensity;
+        const oy = (Math.random() - 0.5) * shakeIntensity;
+        ctx.translate(ox, oy);
+      }
+
+      ctx.clearRect(0, 0, screenWidth, screenHeight);
+
+      const cx = screenWidth / 2;
+      const cy = screenHeight / 2;
+      const maxRadarRange = Math.min(screenWidth, screenHeight) * 0.42;
+
+      // 1. Radar Grid Concentric Distance Rings
+      const ringSteps = [0.25, 0.5, 0.75, 1.0];
+      ringSteps.forEach((frac) => {
+        const r = maxRadarRange * frac;
+        ctx.strokeStyle = frac === 1.0 ? 'rgba(0, 242, 255, 0.4)' : 'rgba(0, 242, 255, 0.12)';
+        ctx.lineWidth = frac === 1.0 ? 1.5 : 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(0, 242, 255, 0.45)';
+        ctx.font = '11px "Share Tech Mono"';
+        ctx.fillText(`${Math.round(frac * 80)} KM`, cx + 6, cy - r + 13);
+      });
+
+      // 2. Crosshair Grid Lines
+      ctx.strokeStyle = 'rgba(0, 242, 255, 0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - maxRadarRange, cy);
+      ctx.lineTo(cx + maxRadarRange, cy);
+      ctx.moveTo(cx, cy - maxRadarRange);
+      ctx.lineTo(cx, cy + maxRadarRange);
+      ctx.stroke();
+
+      // 3. Sweeping Radar Beam
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, maxRadarRange, radarSweep - 0.35, radarSweep);
+      ctx.closePath();
+      const sweepGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, maxRadarRange);
+      sweepGrad.addColorStop(0, 'rgba(0, 242, 255, 0)');
+      sweepGrad.addColorStop(1, 'rgba(0, 242, 255, 0.14)');
+      ctx.fillStyle = sweepGrad;
+      ctx.fill();
+      ctx.restore();
+
+      // 4. Boresight Aiming Cone
+      const boresightLimit = 0.48;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, maxRadarRange, planeAngle - boresightLimit, planeAngle + boresightLimit);
+      ctx.closePath();
+      ctx.fillStyle = targetLocked ? 'rgba(255, 46, 99, 0.12)' : 'rgba(0, 242, 255, 0.04)';
+      ctx.fill();
+      ctx.strokeStyle = targetLocked ? 'rgba(255, 46, 99, 0.65)' : 'rgba(0, 242, 255, 0.22)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+
+      // 5. Render Shockwaves
+      shockwaves.forEach((s) => {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 120, 50, ${s.alpha})`;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      });
+
+      // 6. Render Target Enemies
+      enemies.forEach((e) => {
+        ctx.save();
+        ctx.translate(e.x, e.y);
+
+        if (e.locked) {
+          ctx.strokeStyle = '#ff2e63';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(-16, -16, 32, 32);
+          ctx.fillStyle = 'rgba(255, 46, 99, 0.25)';
+          ctx.fillRect(-16, -16, 32, 32);
+
+          ctx.fillStyle = '#ff2e63';
+          ctx.font = 'bold 10px "Chakra Petch"';
+          ctx.fillText(`LOCK: ${e.callsign}`, 20, -4);
+        }
+
+        ctx.fillStyle = e.locked ? '#ff2e63' : '#ff477e';
+        ctx.beginPath();
+        ctx.arc(0, 0, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = e.locked ? '#ff2e63' : 'rgba(255, 71, 126, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        const toCx = cx - e.x;
+        const toCy = cy - e.y;
+        const d = Math.hypot(toCx, toCy);
+        ctx.lineTo((toCx / d) * 16, (toCy / d) * 16);
+        ctx.stroke();
+
+        ctx.restore();
+      });
+
+      // 7. Render Missiles & Trails
+      missiles.forEach((m) => {
+        m.trail.forEach((t) => {
+          ctx.fillStyle = `rgba(0, 242, 255, ${t.alpha * 0.45})`;
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+          t.alpha -= 0.07;
+        });
+
+        ctx.fillStyle = '#ffea00';
+        ctx.shadowColor = '#ffea00';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      });
+
+      // 8. Render Explosion Particles
+      particles.forEach((p) => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+      });
+
+      // 9. Render Interceptor Fighter Jet (Center)
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(planeAngle);
+
+      ctx.strokeStyle = 'rgba(0, 242, 255, 0.45)';
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(35, 0);
+      ctx.lineTo(maxRadarRange, 0);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = targetLocked ? '#ff2e63' : '#00f2ff';
+      ctx.fillStyle = targetLocked ? '#2e0a14' : '#012836';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(30, 0);
+      ctx.lineTo(-18, -18);
+      ctx.lineTo(-8, -5);
+      ctx.lineTo(-16, 0);
+      ctx.lineTo(-8, 5);
+      ctx.lineTo(-18, 18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = targetLocked ? '#ff2e63' : '#00f2ff';
+      ctx.beginPath();
+      ctx.arc(6, 0, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+      ctx.restore();
+    }
+
+    /* Animation Loop */
+    function gameLoop() {
+      updateSimulation();
+      renderFrame();
+      requestAnimationFrame(gameLoop);
+    }
+
+    window.onload = function() {
+      resizeCanvas();
+      gameLoop();
+    };
+  })();
+  </script>
+</body>
+</html>

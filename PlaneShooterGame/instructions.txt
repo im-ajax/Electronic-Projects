@@ -1,0 +1,186 @@
+================================================================================
+          PROJECT SPECIFICATION: AERO-LOCK TACTICAL INTERCEPTOR
+               ESP32-S3 PHYSICAL CONTROLLER & 1080p HUD SYSTEM
+================================================================================
+
+1. PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+AERO-LOCK is an interactive, hardware-integrated avionics tactical interceptor 
+simulator. The system pairs an ESP32-S3 microcontroller running embedded C++ 
+with a high-performance, single-page HTML5/Canvas 1080p browser application. 
+
+Control and telemetry are exchanged bidirectionally in real time via the Web 
+Serial API over a single USB-C cable (115200 baud).
+
+Key Operational Features:
+  - Analog Steering: A continuous potentiometer maps manual knob turning to 
+    a 360-degree aircraft flight heading with sub-degree accuracy.
+  - Tactical Weapons Interlock: A digital TTP223 capacitive touch sensor 
+    serves as the primary missile launch trigger. Firing is hard-locked in both 
+    firmware and browser logic, meaning ordnance will not leave the rail unless 
+    an enemy aircraft is centered within the radar boresight reticle.
+  - Contactless Magazine Replenishment: An active-infrared (IR) proximity 
+    sensor detects hand-wave gestures to instantly reload missile ordnance.
+  - Procedural Sound Synthesis: Real-time procedural audio synthesis using 
+    the browser's Web Audio API generates continuous engine hum, target lock 
+    tones, missile rocket launches, dry weapon disarmed clicks, mechanical reload 
+    clicks, and multi-layered explosive impacts without external audio assets.
+  - Dual Input Priority Arbitration: Seamlessly blends physical hardware 
+    inputs with keyboard fallbacks (A/D, Arrows, Space, R) without serial stream 
+    jitter or position overwrites.
+
+
+================================================================================
+2. HARDWARE ARCHITECTURE & WIRING SPECIFICATION
+================================================================================
+
+Operating Rail: Pure 3.3V Logic & Power Rail (Common GND)
+Microcontroller: ESP32-S3 (DevKitC-1 or equivalent USB CDC module)
+
+PIN CONNECTIONS TABLE:
++-------------------+--------------------+------------------+------------------+
+| Component         | Module Pin         | ESP32-S3 Pin     | Mode / Function  |
++-------------------+--------------------+------------------+------------------+
+| Potentiometer     | Outer Pin 1        | 3.3V             | Power Reference  |
+| (10k Linear)      | Center Wiper       | GPIO 1 (ADC1_CH0)| Analog Input     |
+|                   | Outer Pin 2        | GND              | Ground           |
++-------------------+--------------------+------------------+------------------+
+| TTP223 Capacitive | VCC                | 3.3V             | Continuous Power |
+| Touch Sensor      | GND                | GND              | Ground           |
+|                   | SIG / OUT          | GPIO 4           | INPUT_PULLDOWN   |
++-------------------+--------------------+------------------+------------------+
+| IR Obstacle Avoid | VCC                | 3.3V             | Continuous Power |
+| Sensor Module     | GND                | GND              | Ground           |
+|                   | OUT                | GPIO 5           | INPUT_PULLUP     |
++-------------------+--------------------+------------------+------------------+
+
+Hardware Justifications:
+  - Removal of Mechanical Relay: A typical 5V relay module coil draws 70-90mA 
+    and fails to pull in reliably at 3.3V, causing brownouts and logic latch 
+    failures. By eliminating the relay, the continuous current draw drops to 
+    ~20mA, comfortably within the ESP32-S3 LDO capacity (500mA+).
+  - Software Interlock: The safety cutoff function previously assigned to the 
+    relay contacts is handled purely in software/firmware via state packets.
+  - Sensor Rails: Both the TTP223 and IR sensor run reliably from 3.3V, ensuring 
+    that all digital signals into GPIO 4 and GPIO 5 strictly respect the ESP32's 
+    3.3V logic threshold without requiring level shifters.
+
+
+================================================================================
+3. CORE LOGICS AND METHODS
+================================================================================
+
+A. ANALOG FILTERING & ROTATION DYNAMICS (ESP32 FIRMWARE)
+--------------------------------------------------------
+The ESP32-S3 12-bit Analog-to-Digital Converter (ADC) produces high-frequency 
+electrical noise across raw readings (0-4095). To achieve jitter-free, rapid 
+steering:
+  1. Multi-Sample Oversampling: 4 to 16 successive ADC samples are averaged 
+     per loop iteration to cancel random AC ripple.
+  2. Exponential Moving Average (EMA):
+        smoothAdc = (alpha * rawAvg) + ((1.0 - alpha) * smoothAdc);
+     Using alpha = 0.45 provides snappy responsiveness with zero noticeable 
+     turn lag while stabilizing the heading.
+  3. Range Normalization & Multiplier:
+     ADC values are constrained to the calibrated baseline [60, 4020] and mapped:
+        normalized = (currentAdc - MIN) / (MAX - MIN);
+        angle = fmod(normalized * 360.0 * ROTATION_MULTIPLIER, 360.0);
+     A multiplier of 1.35x allows a partial turn of the physical knob to sweep 
+     across the full 360-degree compass circle.
+
+B. ASYNCHRONOUS EDGE TRIGGERING & LATCHING
+-----------------------------------------
+Human touch gestures and hand waves can last a mere 30-50 milliseconds. If the 
+ESP32 streams telemetry packets once every 20ms (50 Hz), a standard polling read 
+risks dropping the event.
+  - Firmware Event Latch: State changes (digitalRead HIGH on Touch, LOW on IR) 
+    are immediately latched into boolean flags:
+        if (rawTouch && !lastTouch && isLocked) firePending = true;
+        if (rawIR && !lastIR) reloadPending = true;
+  - Packet Emission: During the scheduled 20ms telemetry push, the flags are 
+    read into the JSON payload ({"angle":X, "fire":1, "reload":0}) and reset 
+    to false, guaranteeing zero dropped inputs.
+
+C. BIDIRECTIONAL WEAPONS INTERLOCK
+----------------------------------
+To enforce realistic fighter-jet firing parameters:
+  1. Target Tracking: The browser continuously evaluates the angular difference 
+     between the fighter nose angle (theta_plane) and all incoming enemy vectors:
+        delta_theta = |theta_plane - atan2(dy, dx)|
+  2. Acquisition Threshold: If an enemy aircraft falls within the 27.5-degree 
+     boresight cone (delta_theta <= 0.48 rad) and inside maximum radar range 
+     (650px), targetLocked is set to TRUE.
+  3. Bidirectional Handshake:
+     - The browser dispatches {"locked": true} back over the Web Serial writer.
+     - The ESP32 parses this line and sets its internal boolean 'isLocked'.
+     - If unlocked, tapping the physical touch sensor discards the missile fire 
+       request at both the hardware level (firmware ignores touch) and the client 
+       level (browser plays a dry lockout click without consuming ammo).
+
+D. DUAL-INPUT ARBITRATION (HARDWARE VS. KEYBOARD)
+------------------------------------------------
+A known conflict in hybrid hardware/software games occurs when an active serial 
+stream (50 updates/sec) continuously overrides keyboard inputs.
+  - Dynamic Priority Lock: When a keyboard event (A, D, Left, Right) is pressed, 
+    the system marks a timestamp:
+        keyboardControlActiveUntil = performance.now() + 1500;
+  - Delta Gating: While this timer is active, serial angle telemetry is ignored 
+    unless the physical potentiometer delta exceeds 1.5 degrees. This allows the 
+    user to test via keyboard without disconnecting the physical ESP32.
+
+E. PROCEDURAL WEB AUDIO SYNTHESIS
+---------------------------------
+To eliminate audio file dependencies and latencies, all audio is generated 
+in real time using the Web Audio API:
+  - Jet Hum: A 55 Hz sawtooth wave fed into a 110 Hz low-pass filter.
+  - Lock-on Tone: A 1550 Hz square wave pulsed at 80ms intervals.
+  - Missile Launch: A decaying sawtooth wave swept from 800 Hz down to 120 Hz, 
+    layered over a bandpass-filtered white noise burst (1500 Hz -> 250 Hz).
+  - Empty Lockout: A sharp 140 Hz square wave micro-click (50ms).
+  - Mechanical Reload: Dual metallic clicks at 1500 Hz and 2100 Hz separated 
+    by a 120ms chamber cycle delay.
+  - Explosive Impact: A 160 Hz sub-bass sine drop down to 25 Hz blended with 
+    a low-pass filtered noise rumble (700 Hz -> 60 Hz) and screen shake.
+
+
+================================================================================
+4. TELEMETRY PACKET STRUCTURE
+================================================================================
+
+A. UPLINK: ESP32-S3 -> BROWSER (Sent every 20ms / 50 Hz)
+   Format: Single-line JSON terminated with newline ('\n')
+   Example:
+     {"angle":184.2,"fire":0,"reload":0}
+     {"angle":184.5,"fire":1,"reload":0}
+     {"angle":185.0,"fire":0,"reload":1}
+
+B. DOWNLINK: BROWSER -> ESP32-S3 (Dispatched on Target Lock state change)
+   Format: Single-line JSON terminated with newline ('\n')
+   Example:
+     {"locked":true}
+     {"locked":false}
+
+
+================================================================================
+5. SYSTEM VERIFICATION & TROUBLESHOOTING CHECKLIST
+================================================================================
+
+1. Potentiometer Drift / Noise:
+   - Ensure the outer pins connect firmly across 3.3V and GND.
+   - Adjust FILTER_ALPHA in firmware (lower values = smoother; higher = faster).
+
+2. Touch Sensor Responsiveness:
+   - Verify the onboard LED on the red TTP223 module illuminates upon contact.
+   - Remember: Missile launch will only trigger when TARGET LOCKED is displayed 
+     on the HUD.
+
+3. IR Sensor Calibration:
+   - Use a small screwdriver on the onboard blue trim pot of the IR module.
+   - Calibrate so that the indicator LED stays OFF when clear and snaps ON 
+     only when a hand passes within 3 to 6 cm.
+
+4. Serial Port Permissions:
+   - Web Serial requires Chrome, Edge, or Opera over HTTPS or localhost/file.
+   - Close PlatformIO's Serial Monitor in VS Code before opening the Web 
+     Serial connection in the browser to avoid COM port access locks.
+================================================================================
